@@ -1,0 +1,602 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>우리 소식</title>
+  <style>
+    * { box-sizing: border-box; }
+
+    body {
+      font-family: system-ui, sans-serif;
+      margin: 0;
+      padding: 32px 16px 64px;
+      color: #2b2b2b;
+
+      /* 벽돌 벽
+         한 칸 = 가로 64px, 세로 32px.
+         두 줄이 한 세트(64px)라서, 윗줄은 0px 부터 / 아랫줄은 32px 부터 세로 줄눈을 긋는다.
+         그래야 위아래가 반 칸씩 엇갈린 벽돌 모양이 된다. */
+      background-color: #a85842;
+      /* 벽돌 한 세트(가로 64 x 세로 64)를 그려서 바둑판처럼 반복시킨다.
+         윗줄 세로 줄눈은 가운데(32), 아랫줄은 양 끝(0, 64)에 있어서 반 칸 엇갈린다. */
+      background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='64' height='64'%3E%3Cg stroke='%23f2d8c4' stroke-width='2'%3E%3Cpath d='M0 1h64M0 33h64M0 63h64'/%3E%3Cpath d='M32 1v32M0 33v30M64 33v30'/%3E%3C/g%3E%3C/svg%3E");
+      background-size: 64px 64px;
+      background-attachment: fixed;
+    }
+
+    .wrap { max-width: 900px; margin: 0 auto; }
+
+    /* 글씨가 벽돌 위에서도 읽히도록 */
+    .head {
+      background: #fffffff0;
+      border-radius: 8px;
+      padding: 14px 18px;
+      margin-bottom: 20px;
+    }
+    h1 { font-size: 22px; margin: 0 0 4px; }
+    .sub { color: #777; font-size: 13px; margin: 0; }
+
+    /* 글쓰기 */
+    .writer {
+      background: #fff;
+      border-radius: 8px;
+      padding: 16px;
+      margin-bottom: 24px;
+      box-shadow: 0 2px 8px rgba(0,0,0,.15);
+    }
+    .writer input, .writer textarea {
+      width: 100%;
+      border: none;
+      border-bottom: 1px solid #eee;
+      padding: 8px 0;
+      font: inherit;
+      outline: none;
+      background: none;
+    }
+    .writer textarea { resize: none; height: 56px; border-bottom: none; }
+    .writer input:focus { border-bottom-color: #888; }
+    .writer button {
+      border: none;
+      background: #2b2b2b;
+      color: #fff;
+      padding: 8px 20px;
+      border-radius: 5px;
+      font: inherit;
+      cursor: pointer;
+      float: right;
+    }
+    .writer button:active { background: #555; }
+    .writer::after { content: ""; display: block; clear: both; }
+
+    /* 급식 — 벽에 비스듬히 붙인 종이 포스터 */
+    .meal {
+      background: #fffdf6;
+      padding: 18px 22px 20px;
+      margin: 0 auto 34px;
+      max-width: 620px;
+      font-size: 15px;
+      line-height: 1.65;
+      color: #23201c;
+      /* 종이가 살짝 기울어 붙은 느낌 */
+      transform: rotate(-1deg);
+      box-shadow: 0 6px 18px rgba(0,0,0,.3);
+      position: relative;
+    }
+    /* 네 귀퉁이를 접어 붙인 테이프 */
+    .meal::before, .meal::after {
+      content: "";
+      position: absolute;
+      top: -10px;
+      width: 68px;
+      height: 22px;
+      background: #ffffff5c;
+      border: 1px solid #ffffff6b;
+      box-shadow: 0 1px 3px rgba(0,0,0,.18);
+    }
+    .meal::before { left: 14px;  transform: rotate(-6deg); }
+    .meal::after  { right: 14px; transform: rotate(5deg); }
+
+    .meal h2 {
+      font-size: 13px;
+      letter-spacing: .18em;
+      color: #a8452f;
+      margin: 0 0 12px;
+      font-weight: 700;
+      text-align: center;
+      padding-bottom: 10px;
+      border-bottom: 2px solid #e8d9c2;
+    }
+    /* 조식/중식/석식 한 줄씩 */
+    .meal-row { margin-bottom: 8px; }
+    .meal-row:last-child { margin-bottom: 0; }
+    .meal-type {
+      display: inline-block;
+      background: #a8452f;
+      color: #fff;
+      font-size: 12px;
+      font-weight: 700;
+      padding: 2px 9px;
+      border-radius: 3px;
+      margin-right: 8px;
+      vertical-align: 1px;
+    }
+    .meal-none { color: #8a8073; }
+
+    /* 담벼락
+       포스트잇 높이가 제각각이라, 줄 단위로 배치하는 flex-wrap 을 쓰면
+       긴 포스트잇 아래에 빈 벽이 생긴다.
+       그래서 JS(layoutWall)가 좌표를 직접 계산해 빈틈 없이 쌓는다. */
+    .wall {
+      position: relative;
+    }
+
+    .note {
+      position: absolute;
+      width: 180px;
+      min-height: 150px;
+      /* JS 가 계산한 자리로 부드럽게 이동 */
+      transition: left .25s ease, top .25s ease, box-shadow .15s;
+      padding: 14px;
+      border-radius: 2px;
+      /* 벽에 붙은 느낌 */
+      box-shadow: 0 3px 8px rgba(0,0,0,.28);
+      display: flex;
+      flex-direction: column;
+      animation: pop .25s ease-out;
+    }
+    .note:hover {
+      box-shadow: 0 6px 16px rgba(0,0,0,.35);
+      z-index: 2;
+    }
+    @keyframes pop {
+      from { opacity: 0; transform: scale(.9); }
+      to   { opacity: 1; }
+    }
+
+    /* 뗄 때 스르륵 떨어지는 효과 */
+    .note.peel { animation: peel .3s ease-in forwards; }
+    @keyframes peel {
+      to { opacity: 0; transform: translateY(24px) rotate(8deg); }
+    }
+
+    /* 제목도 본문과 같은 22px 줄 위에 올려서, 밑줄 간격이 전부 똑같아지게 한다.
+       제목은 22px 한 칸을 쓰고 아래 여백 없이 바로 본문이 이어진다. */
+    .note h3 {
+      margin: 0;
+      font-size: 15px;
+      line-height: 22px;
+      word-break: break-word;
+      background-image: linear-gradient(transparent 21px, var(--line) 21px, var(--line) 22px);
+      background-size: 100% 22px;
+    }
+    /* 본문도 같은 줄공책 패턴. line-height 와 background-size 가 22px 로 같아야
+       글자가 줄 위에 정확히 앉는다 */
+    .note p {
+      margin: 0;
+      font-size: 13px;
+      line-height: 22px;
+      white-space: pre-wrap;
+      word-break: break-word;
+      min-height: 66px;          /* 줄 3개(22px x 3)는 기본으로 보이게 */
+      background-image: linear-gradient(transparent 21px, var(--line) 21px, var(--line) 22px);
+      background-size: 100% 22px;
+    }
+    .note .foot {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      margin-top: auto;          /* 항상 카드 맨 아래 */
+      padding-top: 10px;
+      font-size: 12px;
+      color: #666;
+    }
+    .note .foot button {
+      border: none;
+      background: rgba(0,0,0,.06);
+      border-radius: 4px;
+      padding: 3px 8px;
+      font: inherit;
+      color: inherit;
+      cursor: pointer;
+    }
+    .note .foot button:active { background: rgba(0,0,0,.15); }
+    /* 내가 누른 좋아요 */
+    .note .foot button.liked { background: #e8455a; color: #fff; }
+    .note .date { margin-left: auto; opacity: .55; }
+
+    /* 관리자일 때만 보이는 표시 */
+    .adminbadge { display: none; }
+    body.admin .adminbadge {
+      display: inline-block;
+      margin-left: 8px;
+      padding: 2px 8px;
+      border-radius: 999px;
+      background: #e8455a;
+      color: #fff;
+      font-size: 12px;
+      vertical-align: middle;
+    }
+
+    .empty {
+      color: #fff;
+      font-size: 14px;
+      background: #00000038;
+      padding: 12px 16px;
+      border-radius: 6px;
+    }
+  </style>
+</head>
+<body>
+<div class="wrap">
+
+  <div class="head">
+    <h1>우리 소식<span class="adminbadge">관리자</span></h1>
+    <p class="sub">쓰면 바로 갱신되니 아무거나 적으세요(진짜 아무거나)</p>
+  </div>
+
+  <div class="meal">
+    <h2>오늘 급식</h2>
+    <div id="meal">불러오는 중...</div>
+  </div>
+
+  <div class="writer">
+    <input id="title" placeholder="제목" maxlength="20">
+    <textarea id="content" placeholder="내용"></textarea>
+    <button onclick="createMemo()">붙이기</button>
+  </div>
+
+  <div class="wall" id="wall"></div>
+
+</div>
+
+<script>
+const API = "";
+
+// [포스트잇 배경색, 그 색을 진하게 만든 밑줄색]
+const COLORS = [
+  ["#fff9c4", "#e2cf6a"],
+  ["#ffe0e6", "#efa7b5"],
+  ["#d7f0ff", "#93c7e4"],
+  ["#e2f7dd", "#9ed095"],
+  ["#f0e4ff", "#bda3dd"],
+  ["#ffe9d6", "#e8b384"],
+];
+
+// 내가 붙인 포스트잇 표시
+// 이 브라우저만의 번호를 하나 만들어 두고, 붙일 때 같이 보낸다.
+// 떼기는 이 번호가 맞아야 되고, 확인은 서버에서 한다
+const TOKEN_KEY = "myToken";
+
+function getMyToken() {
+  try {
+    let token = localStorage.getItem(TOKEN_KEY);
+    if (!token) {
+      token = String(Date.now()) + "-" + Math.random().toString(36).slice(2, 10);
+      localStorage.setItem(TOKEN_KEY, token);
+    }
+    return token;
+  } catch (e) {
+    // 저장이 막힌 브라우저에서는 이번 접속 동안만 쓰는 번호를 쓴다
+    return "temp-" + Math.random().toString(36).slice(2, 10);
+  }
+}
+
+const MY_TOKEN = getMyToken();
+
+// 관리자 열쇠. 넣어 두면 남의 포스트잇도 뗄 수 있다.
+// 열쇠가 맞는지는 서버가 판단하고, 화면은 그 답만 받아 둔다
+const ADMIN_KEY_STORE = "adminKey";
+let IS_ADMIN = false;
+
+function getAdminKey() {
+  try {
+    return localStorage.getItem(ADMIN_KEY_STORE) || "";
+  } catch (e) {
+    return "";
+  }
+}
+
+// 주소 끝에 #admin 을 붙이면 열쇠를 물어본다
+async function setupAdmin() {
+  if (location.hash === "#admin") {
+    const typed = prompt("관리자 열쇠를 넣으세요");
+    if (typed) {
+      try { localStorage.setItem(ADMIN_KEY_STORE, typed.trim()); } catch (e) {}
+    }
+    history.replaceState(null, "", location.pathname);
+  }
+
+  const key = getAdminKey();
+  if (!key) { IS_ADMIN = false; return; }
+
+  try {
+    const res = await fetch(API + "/admin/check?token=" + encodeURIComponent(key));
+    const data = await res.json();
+    IS_ADMIN = !!data.admin;
+  } catch (e) {
+    IS_ADMIN = false;
+  }
+
+  if (IS_ADMIN) {
+    document.body.classList.add("admin");
+  }
+}
+
+// 뗄 때 보낼 번호. 관리자면 열쇠를, 아니면 내 번호를 보낸다
+function tokenForDelete() {
+  return IS_ADMIN ? getAdminKey() : MY_TOKEN;
+}
+
+// 내가 붙인 메모 번호들. 화면에서 떼기 버튼을 보여줄지 정할 때 쓴다
+const MINE_KEY = "myMemos";
+
+function getMine() {
+  try {
+    return new Set(JSON.parse(localStorage.getItem(MINE_KEY)) || []);
+  } catch (e) {
+    return new Set();
+  }
+}
+
+function saveMine(set) {
+  try {
+    localStorage.setItem(MINE_KEY, JSON.stringify([...set]));
+  } catch (e) { /* 저장 안 돼도 화면은 돌아가야 한다 */ }
+}
+
+// 내가 누른 좋아요 기억하기
+// 브라우저에 저장해서, 같은 사람이 여러 번 못 누르게 막는다
+const LIKED_KEY = "likedMemos";
+
+function getLiked() {
+  try {
+    return new Set(JSON.parse(localStorage.getItem(LIKED_KEY)) || []);
+  } catch (e) {
+    return new Set();
+  }
+}
+
+function saveLiked(set) {
+  try {
+    localStorage.setItem(LIKED_KEY, JSON.stringify([...set]));
+  } catch (e) { /* 저장 안 돼도 화면은 돌아가야 한다 */ }
+}
+
+function styleFor(id) {
+  const pair = COLORS[id % COLORS.length];
+  const color = pair[0];
+  const line = pair[1];
+  const tilt = ((id * 7) % 5) - 2;   // -2 ~ 2도
+  // --line 은 제목 밑줄과 본문 줄에서 같이 쓴다
+  return "background:" + color + "; --line:" + line + "; transform: rotate(" + tilt + "deg);";
+}
+
+function escapeHtml(text) {
+  const d = document.createElement("div");
+  d.textContent = text;
+  return d.innerHTML;
+}
+
+function shortDate(iso) {
+  if (!iso) return "";
+  const d = new Date(iso);
+  if (isNaN(d)) return "";
+  return (d.getMonth() + 1) + "/" + d.getDate();
+}
+
+// 급식
+async function loadMeal() {
+  const box = document.getElementById("meal");
+  try {
+    const res = await fetch(API + "/meal");
+    if (!res.ok) {
+      box.innerHTML = '<span class="meal-none">오늘은 급식 정보가 없습니다.</span>';
+      return;
+    }
+    const meals = await res.json();
+    box.innerHTML = meals.map(function (meal) {
+      return '<div class="meal-row"><span class="meal-type">' + escapeHtml(meal.type) + '</span>'
+           + meal.menu.map(escapeHtml).join(", ") + '</div>';
+    }).join("");
+  } catch (e) {
+    box.innerHTML = '<span class="meal-none">급식을 불러오지 못했습니다.</span>';
+  }
+}
+
+// 담벼락
+let lastData = "";
+
+async function loadMemos() {
+  const res = await fetch(API + "/memos");
+  const memos = await res.json();
+
+  // 좋아요 많은 순, 같으면 최신 순
+  memos.sort(function (a, b) { return (b.likes - a.likes) || (b.id - a.id); });
+
+  const liked = getLiked();
+  const mine = getMine();
+  // 내가 누른 목록까지 포함해서 비교해야 색이 바로 바뀐다
+  const json = JSON.stringify(memos) + "|" + [...liked].sort().join(",")
+             + "|" + [...mine].sort().join(",");
+  if (json === lastData) return;
+  lastData = json;
+
+  const wall = document.getElementById("wall");
+
+  if (memos.length === 0) {
+    wall.innerHTML = '<p class="empty">아직 아무것도 없어요. 첫 메모를 붙여보세요.</p>';
+    wall.style.height = "";
+    return;
+  }
+
+  wall.innerHTML = memos.map(function (memo) {
+    const isLiked = liked.has(memo.id);
+    return ''
+      + '<div class="note" id="note-' + memo.id + '" style="' + styleFor(memo.id) + '">'
+      +   '<h3>' + escapeHtml(memo.title) + '</h3>'
+      +   '<p>' + escapeHtml(memo.content) + '</p>'
+      +   '<div class="foot">'
+      +     '<button class="' + (isLiked ? "liked" : "") + '"'
+      +             ' onclick="toggleLike(' + memo.id + ')"'
+      +             ' title="' + (isLiked ? "좋아요 취소" : "좋아요") + '">'
+      +       '♥ ' + (memo.likes || 0)
+      +     '</button>'
+      +     ((mine.has(memo.id) || IS_ADMIN)
+              ? '<button onclick="peelOff(' + memo.id + ')" title="떼기">떼기</button>'
+              : '')
+      +     '<span class="date">' + shortDate(memo.created_at) + '</span>'
+      +   '</div>'
+      + '</div>';
+  }).join("");
+
+  layoutWall();
+}
+
+// 포스트잇을 빈틈 없이 쌓는다.
+// 칸(column)을 여러 개 만들어두고, 하나씩 "지금 제일 짧은 칸" 에 넣는다.
+// 그러면 긴 포스트잇 아래에 빈 벽이 남지 않는다.
+const NOTE_W = 180;   // 포스트잇 너비 (CSS 와 같아야 한다)
+const GAP = 36;       // 사이 간격 (포스트잇이 기울어져 있어 넉넉하게 둔다)
+
+function layoutWall() {
+  const wall = document.getElementById("wall");
+  const notes = [...wall.querySelectorAll(".note")];
+  if (notes.length === 0) {
+    wall.style.height = "";
+    return;
+  }
+
+  // 화면 너비에 칸이 몇 개 들어가는지 계산 (최소 1개)
+  const wallWidth = wall.clientWidth;
+  const cols = Math.max(1, Math.floor((wallWidth + GAP) / (NOTE_W + GAP)));
+
+  // 칸이 화면 가운데 오도록 남는 공간을 반씩 나눈다
+  const used = cols * NOTE_W + (cols - 1) * GAP;
+  const offsetX = Math.max(0, (wallWidth - used) / 2);
+
+  // 각 칸이 지금 어디까지 찼는지 (0 부터 시작)
+  const colHeight = new Array(cols).fill(0);
+
+  notes.forEach(function (note) {
+    // 제일 짧은 칸을 찾는다
+    let target = 0;
+    for (let i = 1; i < cols; i++) {
+      if (colHeight[i] < colHeight[target]) target = i;
+    }
+
+    note.style.left = (offsetX + target * (NOTE_W + GAP)) + "px";
+    note.style.top = colHeight[target] + "px";
+
+    // 그 칸의 높이를 늘려준다.
+    // 포스트잇이 살짝 기울어져 있어서, 회전까지 반영된 실제 높이를 쓴다.
+    colHeight[target] += note.getBoundingClientRect().height + GAP;
+  });
+
+  // 부모가 position:absolute 자식의 높이를 모르므로 직접 정해준다
+  wall.style.height = (Math.max(...colHeight) - GAP) + "px";
+}
+
+// 창 크기가 바뀌면 칸 수가 달라지므로 다시 배치한다
+window.addEventListener("resize", layoutWall);
+
+async function createMemo() {
+  const titleEl = document.getElementById("title");
+  const contentEl = document.getElementById("content");
+
+  const title = titleEl.value.trim();
+  const content = contentEl.value.trim();
+
+  if (!title) {
+    alert("제목을 입력하세요");
+    titleEl.focus();
+    return;
+  }
+
+  const res = await fetch(API + "/memos", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ title: title, content: content, owner_token: MY_TOKEN })
+  });
+
+  // 검열에 걸리면 붙지 않는다. 쓴 내용은 지우지 말고 그대로 둔다
+  if (res.status === 400) {
+    alert("아무거나 적으라고 했지 그런 건 아니었어요");
+    titleEl.focus();
+    return;
+  }
+
+  // 방금 붙인 건 내 것으로 기억해 둔다
+  try {
+    const created = await res.json();
+    const mine = getMine();
+    mine.add(created.id);
+    saveMine(mine);
+  } catch (e) { /* 기억 못 해도 붙는 건 됐다 */ }
+
+  titleEl.value = "";
+  contentEl.value = "";
+  titleEl.focus();
+  loadMemos();
+}
+
+// 이미 눌렀으면 취소, 아니면 좋아요
+async function toggleLike(id) {
+  const liked = getLiked();
+
+  if (liked.has(id)) {
+    await fetch(API + "/memos/" + id + "/like", { method: "DELETE" });
+    liked.delete(id);
+  } else {
+    await fetch(API + "/memos/" + id + "/like", { method: "POST" });
+    liked.add(id);
+  }
+
+  saveLiked(liked);
+  loadMemos();
+}
+
+// 포스트잇 떼기
+async function peelOff(id) {
+  if (!confirm("이 포스트잇을 뗄까요?")) return;
+
+  // 떨어지는 효과를 먼저 보여주고 지운다
+  const el = document.getElementById("note-" + id);
+  if (el) el.classList.add("peel");
+
+  const res = await fetch(API + "/memos/" + id + "?owner_token=" + encodeURIComponent(tokenForDelete()), {
+    method: "DELETE"
+  });
+
+  // 서버가 거절하면(내 것이 아니면) 효과를 취소하고 원래대로 둔다
+  if (!res.ok) {
+    if (el) el.classList.remove("peel");
+    alert("내가 붙인 포스트잇만 뗄 수 있어요.");
+    return;
+  }
+
+  // 뗀 건 기록에서도 지운다
+  const liked = getLiked();
+  if (liked.delete(id)) saveLiked(liked);
+  const mine = getMine();
+  if (mine.delete(id)) saveMine(mine);
+
+  setTimeout(loadMemos, 300);
+}
+
+// 제목 칸에서 엔터 누르면 내용 칸으로
+document.getElementById("title").addEventListener("keydown", function (e) {
+  if (e.key === "Enter") document.getElementById("content").focus();
+});
+
+// 관리자인지 먼저 확인하고 담벼락을 그린다
+setupAdmin().then(loadMemos);
+
+loadMeal();
+loadMemos();
+
+// 2초마다 담벼락만 다시 확인
+setInterval(loadMemos, 2000);
+</script>
+</body>
+</html>
